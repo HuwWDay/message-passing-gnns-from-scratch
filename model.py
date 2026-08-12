@@ -393,8 +393,43 @@ def gat_attention_logits(node_features, src, dst, attn_src, attn_dst, weight):
 
     return logits, transformed
 
-# Step 20 - gat_masked_neighbor_softmax (not yet solved)
-# TODO: implement
+# Step 20 - gat_masked_neighbor_softmax
+import torch
+
+def gat_masked_neighbor_softmax(logits, dst, num_nodes):
+    """Numerically stable softmax of attention logits over each dest node's neighbors.
+
+    Args:
+        logits: FloatTensor of shape (E,) with one unnormalized attention logit per edge.
+        dst: LongTensor of shape (E,) with destination node index for each edge.
+        num_nodes: int, number of nodes N in the graph.
+
+    Returns:
+        FloatTensor of shape (E,) with attention coefficients that sum to 1 over
+        each destination's incoming edges.
+    """
+    if logits.numel() == 0:
+        return logits
+
+    # 1. Reshape logits to (E, 1) for feature-compatible scatter helpers
+    logits_2d = logits.unsqueeze(-1)
+
+    # 2. Compute max logit per destination node for numerical stability (shape: [N, 1])
+    node_max = scatter_max_to_nodes(logits_2d, dst, num_nodes)
+
+    # 3. Gather per-node max to each edge and compute stabilized exp(logits - max)
+    edge_max = node_max[dst]
+    exp_logits = torch.exp(logits_2d - edge_max)
+
+    # 4. Sum stabilized exp values per destination node (normalizer Z_j, shape: [N, 1])
+    node_exp_sum = scatter_sum_to_nodes(exp_logits, dst, num_nodes)
+
+    # 5. Gather normalizers back to edges and divide
+    edge_exp_sum = node_exp_sum[dst]
+    alpha_2d = exp_logits / edge_exp_sum
+
+    # 6. Squeeze back to shape (E,)
+    return alpha_2d.squeeze(-1)
 
 # Step 21 - gat_head_forward (not yet solved)
 # TODO: implement
