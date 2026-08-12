@@ -479,8 +479,43 @@ def gat_head_forward(node_features, src, dst, weight, attn_src, attn_dst, bias=N
 
     return head_out, attn_coeffs
 
-# Step 22 - merge_gat_heads (not yet solved)
-# TODO: implement
+# Step 22 - merge_gat_heads
+import torch
+
+def merge_gat_heads(head_outputs, mode='concat'):
+    """Merge multi-head GAT outputs into one node-feature tensor.
+
+    Args:
+        head_outputs: A list/tuple of FloatTensors, each of shape (N, F),
+                      OR a single FloatTensor of shape (H, N, F).
+        mode: Merging strategy - 'concat' or 'mean'.
+
+    Returns:
+        FloatTensor of shape (N, H * F) if mode='concat',
+        or shape (N, F) if mode='mean'.
+    """
+    if mode not in ('concat', 'mean'):
+        raise ValueError(f"Unsupported mode '{mode}'. Expected 'concat' or 'mean'.")
+
+    # If list/tuple of (N, F) tensors, merge directly or convert to (H, N, F)
+    if isinstance(head_outputs, (list, tuple)):
+        if mode == 'concat':
+            return torch.cat(head_outputs, dim=-1)
+        elif mode == 'mean':
+            stacked = torch.stack(head_outputs, dim=0)
+            return stacked.mean(dim=0)
+
+    # If head_outputs is already a 3D Tensor of shape (H, N, F)
+    elif isinstance(head_outputs, torch.Tensor):
+        if mode == 'concat':
+            H, N, F = head_outputs.shape
+            # Permute to (N, H, F) then reshape to (N, H * F)
+            return head_outputs.permute(1, 0, 2).reshape(N, H * F)
+        elif mode == 'mean':
+            return head_outputs.mean(dim=0)
+
+    else:
+        raise TypeError("head_outputs must be a list/tuple of tensors or a 3D Tensor.")
 
 # Step 23 - gat_layer_forward (not yet solved)
 # TODO: implement
