@@ -123,8 +123,22 @@ def scatter_mean_to_nodes(edge_features, dst, num_nodes):
     # Divide summed features by node in-degrees
     return summed_features / clamped_degrees
 
-# Step 8 - scatter_max_to_nodes (not yet solved)
-# TODO: implement
+# Step 8 - scatter_max_to_nodes
+def scatter_max_to_nodes(edge_features, dst, num_nodes):
+    num_edges, num_features = edge_features.shape
+    
+    # Initialize output tensor filled with -inf using the dtype and device of edge_features
+    out = torch.full((num_nodes, num_features), float("-inf"), dtype=edge_features.dtype, device=edge_features.device)
+    
+    # Early return if there are no edges
+    if num_edges == 0:
+        return out
+        
+    # Expand destination indices from (E,) to (E, F) for column-wise scattering
+    dst_expanded = dst.unsqueeze(1).expand_as(edge_features)
+    
+    # Reduce edge features into output tensor using elementwise maximum along dimension 0
+    return out.scatter_reduce(0, dst_expanded, edge_features, reduce="amax", include_self=True)
 
 # Step 9 - compute_messages (not yet solved)
 # TODO: implement
