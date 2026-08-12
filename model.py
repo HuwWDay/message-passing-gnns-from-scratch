@@ -357,8 +357,41 @@ def gcn_stack_forward(node_features, src, dst, param_list, activations=None, num
         all_layer_outputs.append(x)
     return x, all_layer_outputs
 
-# Step 19 - gat_attention_logits (not yet solved)
-# TODO: implement
+# Step 19 - gat_attention_logits
+import torch
+import torch.nn.functional as F
+
+def gat_attention_logits(node_features, src, dst, attn_src, attn_dst, weight):
+    """Compute unnormalized GAT attention logits and transformed features.
+
+    Args:
+        node_features: FloatTensor of shape (N, Fin).
+        src: LongTensor of shape (E,) source indices.
+        dst: LongTensor of shape (E,) destination indices.
+        attn_src: FloatTensor of shape (Fout,) source attention vector.
+        attn_dst: FloatTensor of shape (Fout,) destination attention vector.
+        weight: FloatTensor of shape (Fin, Fout) shared linear transform.
+
+    Returns:
+        logits: FloatTensor of shape (E,) unnormalized attention scores.
+        transformed: FloatTensor of shape (N, Fout) linearly transformed nodes.
+    """
+    # 1. Transform node features: H_transformed = X * W (shape: [N, Fout])
+    transformed = gcn_linear_transform(node_features, weight, bias=None)
+
+    # 2. Gather source and destination features for each edge (shape: [E, Fout])
+    h_src = gather_source_node_features(transformed, src)
+    h_dst = gather_source_node_features(transformed, dst)
+
+    # 3. Compute dot products across feature dimension Fout (shape: [E])
+    score_src = (h_src * attn_src).sum(dim=-1)
+    score_dst = (h_dst * attn_dst).sum(dim=-1)
+
+    # 4. Sum source and destination scores and apply LeakyReLU(0.2)
+    unnormalized_scores = score_src + score_dst
+    logits = F.leaky_relu(unnormalized_scores, negative_slope=0.2)
+
+    return logits, transformed
 
 # Step 20 - gat_masked_neighbor_softmax (not yet solved)
 # TODO: implement
