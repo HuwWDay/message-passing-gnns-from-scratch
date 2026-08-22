@@ -618,8 +618,11 @@ def cross_entropy_loss(logits, targets):
     # Return the negative mean across the batch
     return -true.mean()
 
-# Step 38 - mse_loss (not yet solved)
-# TODO: implement
+# Step 38 - mse_loss
+def mse_loss(predictions, targets):
+    # TODO: Compute mean squared error between predictions and targets
+    pred, tar = predictions.view(-1), targets.view(-1)
+    return ((pred-tar)**2).mean()
 
 # Step 39 - accuracy_metric (not yet solved)
 # TODO: implement
