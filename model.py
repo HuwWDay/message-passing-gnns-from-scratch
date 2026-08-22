@@ -624,8 +624,11 @@ def mse_loss(predictions, targets):
     pred, tar = predictions.view(-1), targets.view(-1)
     return ((pred-tar)**2).mean()
 
-# Step 39 - accuracy_metric (not yet solved)
-# TODO: implement
+# Step 39 - accuracy_metric
+def accuracy_metric(logits, targets):
+    # TODO: Return the fraction of argmax(logits) predictions matching targets.
+    guess = torch.argmax(logits, dim=-1)
+    return (targets == guess).float().mean()
 
 # Step 40 - mae_metric (not yet solved)
 # TODO: implement
