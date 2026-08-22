@@ -605,8 +605,18 @@ def gat_layer_forward(node_features, src, dst, head_params, merge_mode='concat',
 # Step 36 - collate_graph_batch (not yet solved)
 # TODO: implement
 
-# Step 37 - cross_entropy_loss (not yet solved)
-# TODO: implement
+# Step 37 - cross_entropy_loss
+import torch
+
+def cross_entropy_loss(logits, targets):
+    # Log-softmax over the class dimension
+    log_probs = torch.log_softmax(logits, dim=-1)
+
+    # Gather the log-probabilities corresponding to the ground-truth targets
+    true = log_probs[torch.arange(logits.shape[0]), targets]
+    
+    # Return the negative mean across the batch
+    return -true.mean()
 
 # Step 38 - mse_loss (not yet solved)
 # TODO: implement
