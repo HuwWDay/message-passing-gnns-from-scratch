@@ -845,8 +845,64 @@ def train_node_classifier(params, dataset, forward_fn, num_epochs, lr, mask_key=
 
     return {"history": history, "params": params}
 
-# Step 43 - train_graph_regressor (not yet solved)
-# TODO: implement
+# Step 43 - train_graph_regressor
+import torch
+
+
+def train_graph_regressor(
+    params, graphs, forward_fn, num_epochs, lr, batch_size=8
+):
+    """Train a graph regressor over multiple epochs of mini-batches.
+
+    Args:
+        params: dict of trainable torch tensors.
+        graphs: list of graph dicts with keys x, edge_index, y.
+        forward_fn: callable(params, batch) -> predictions.
+        num_epochs: number of training epochs.
+        lr: learning rate for SGD updates.
+        batch_size: graphs per mini-batch (default 8).
+
+    Returns:
+        history: dict with 'loss' and 'mae' lists of per-epoch floats.
+        params: updated parameter dict.
+    """
+    history = {"loss": [], "mae": []}
+    num_graphs = len(graphs)
+
+    # Pre-collate full dataset for whole-dataset MAE evaluation
+    full_batch = collate_graph_batch(graphs)
+
+    for epoch in range(num_epochs):
+        total_loss = 0.0
+        num_batches = 0
+
+        # Shuffle indices per epoch
+        perm = torch.randperm(num_graphs).tolist()
+        shuffled_graphs = [graphs[i] for i in perm]
+
+        # Mini-batch training loop
+        for start_idx in range(0, num_graphs, batch_size):
+            batch_graphs = shuffled_graphs[start_idx : start_idx + batch_size]
+            batch = collate_graph_batch(batch_graphs)
+
+            step_result = gnn_train_step(
+                params, batch, forward_fn, mse_loss, lr
+            )
+            params = step_result["params"]
+            total_loss += float(step_result["loss"])
+            num_batches += 1
+
+        avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+
+        # Full-dataset MAE evaluation
+        with torch.no_grad():
+            preds = forward_fn(params, full_batch)
+            epoch_mae = float(mae_metric(preds, full_batch["y"]))
+
+        history["loss"].append(avg_loss)
+        history["mae"].append(epoch_mae)
+
+    return history, params
 
 # Step 44 - representation_similarity (not yet solved)
 # TODO: implement
