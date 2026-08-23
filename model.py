@@ -590,8 +590,50 @@ def gat_layer_forward(node_features, src, dst, head_params, merge_mode='concat',
 # Step 31 - graph_regression_head (not yet solved)
 # TODO: implement
 
-# Step 32 - generate_sbm_graph (not yet solved)
-# TODO: implement
+# Step 32 - generate_sbm_graph
+import torch
+
+
+def generate_sbm_graph(
+    num_nodes, num_classes, p_in, p_out, feature_dim, seed=None
+):
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    # 1. Assign community labels in contiguous blocks
+    node_labels = torch.zeros(num_nodes, dtype=torch.long)
+    for c in range(num_classes):
+        start_idx = c * num_nodes // num_classes
+        end_idx = (c + 1) * num_nodes // num_classes
+        node_labels[start_idx:end_idx] = c
+
+    # 2. Sample random node features
+    node_features = torch.randn(num_nodes, feature_dim)
+
+    # 3. Sample edges for each unordered pair (i < j)
+    src_list = []
+    dst_list = []
+
+    for i in range(num_nodes):
+        for j in range(i + 1, num_nodes):
+            p = p_in if node_labels[i] == node_labels[j] else p_out
+            if torch.rand(1).item() < p:
+                # Add both directions for undirected representation
+                src_list.extend([i, j])
+                dst_list.extend([j, i])
+
+    # 4. Construct edge_index in COO format (2, E)
+    if src_list:
+        edge_index = torch.tensor([src_list, dst_list], dtype=torch.long)
+    else:
+        edge_index = torch.empty((2, 0), dtype=torch.long)
+
+    return {
+        "node_features": node_features,
+        "edge_index": edge_index,
+        "node_labels": node_labels,
+        "num_nodes": num_nodes,
+    }
 
 # Step 33 - build_node_classification_dataset (not yet solved)
 # TODO: implement
