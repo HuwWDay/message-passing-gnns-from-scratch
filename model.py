@@ -648,8 +648,47 @@ def build_node_classification_dataset(num_graphs, num_nodes, num_classes, p_in, 
         graphs.append(graph)
     return graphs
 
-# Step 34 - generate_molecule_like_graph (not yet solved)
-# TODO: implement
+# Step 34 - generate_molecule_like_graph
+import torch
+
+
+def generate_molecule_like_graph(
+    num_nodes, num_node_features, edge_prob=0.3, seed=0
+):
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    # 1. Sample continuous node features (N, F)
+    x = torch.randn(num_nodes, num_node_features)
+
+    # 2. Sample undirected edges without self-loops using an upper-triangular mask
+    rand_matrix = torch.rand(num_nodes, num_nodes)
+    upper_tri_mask = torch.triu(rand_matrix < edge_prob, diagonal=1)
+    src_upper, dst_upper = torch.nonzero(upper_tri_mask, as_tuple=True)
+
+    if src_upper.numel() > 0:
+        # Concatenate both directions for undirected representation
+        src = torch.cat([src_upper, dst_upper], dim=0)
+        dst = torch.cat([dst_upper, src_upper], dim=0)
+        edge_index = torch.stack([src, dst], dim=0).long()
+    else:
+        edge_index = torch.empty((2, 0), dtype=torch.long)
+
+    # 3. Compute node degrees
+    if edge_index.numel() > 0:
+        deg = torch.bincount(edge_index[0], minlength=num_nodes).float()
+    else:
+        deg = torch.zeros(num_nodes, dtype=torch.float)
+
+    # 4. Compute graph-level regression target: y = (1/N) * sum_v (deg(v) * x_bar_v)
+    x_bar = x.mean(dim=1)  # (N,)
+    y = (deg * x_bar).mean()  # 0-dim scalar tensor
+
+    return {
+        "x": x,
+        "edge_index": edge_index,
+        "y": y,
+    }
 
 # Step 35 - build_graph_regression_dataset (not yet solved)
 # TODO: implement
