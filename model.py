@@ -701,8 +701,58 @@ def build_graph_regression_dataset(num_graphs, num_nodes_range, num_node_feature
         graphs.append(graph)
     return graphs
 
-# Step 36 - collate_graph_batch (not yet solved)
-# TODO: implement
+# Step 36 - collate_graph_batch
+import torch
+
+
+def collate_graph_batch(graphs):
+    x_list = []
+    edge_index_list = []
+    batch_list = []
+    y_list = []
+
+    offset = 0
+
+    for i, g in enumerate(graphs):
+        x = g["x"]
+        n = x.shape[0]
+
+        # 1. Accumulate node features
+        x_list.append(x)
+
+        # 2. Shift edge indices by current node offset and accumulate
+        edge_index_shifted = g["edge_index"] + offset
+        edge_index_list.append(edge_index_shifted)
+
+        # 3. Create batch indicator vector for current graph nodes
+        batch_list.append(torch.full((n,), i, dtype=torch.long))
+
+        # 4. Ensure scalar 0-dim float tensor for target y
+        y = g["y"]
+        if not isinstance(y, torch.Tensor):
+            y = torch.tensor(y, dtype=torch.float32)
+        else:
+            y = y.float().reshape(())
+        y_list.append(y)
+
+        offset += n
+
+    # Concatenate / stack accumulated tensors
+    x_batch = torch.cat(x_list, dim=0)
+    edge_index_batch = (
+        torch.cat(edge_index_list, dim=1)
+        if edge_index_list
+        else torch.empty((2, 0), dtype=torch.long)
+    )
+    batch_vec = torch.cat(batch_list, dim=0)
+    y_batch = torch.stack(y_list, dim=0)
+
+    return {
+        "x": x_batch,
+        "edge_index": edge_index_batch,
+        "batch": batch_vec,
+        "y": y_batch,
+    }
 
 # Step 37 - cross_entropy_loss
 import torch
