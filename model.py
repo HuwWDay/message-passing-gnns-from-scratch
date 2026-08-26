@@ -566,8 +566,46 @@ def gat_layer_forward(node_features, src, dst, head_params, merge_mode='concat',
 
     return out, all_attn
 
-# Step 24 - init_gat_parameters (not yet solved)
-# TODO: implement
+# Step 24 - init_gat_parameters
+import math
+import torch
+
+
+def init_gat_parameters(
+    in_dim, out_dim, num_heads=1, with_bias=True, seed=None
+):
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    # Calculate Glorot uniform limits: a = sqrt(6 / (fan_in + fan_out))
+    limit_w = math.sqrt(6.0 / (in_dim + out_dim))
+    limit_a = math.sqrt(6.0 / (out_dim + 1))
+
+    heads = []
+    for _ in range(num_heads):
+        # Sample uniformly from [-limit, limit) via (rand * 2 - 1) * limit
+        w = (
+            (torch.rand(in_dim, out_dim) * 2 - 1) * limit_w
+        ).requires_grad_(True)
+        attn_src = (
+            (torch.rand(out_dim) * 2 - 1) * limit_a
+        ).requires_grad_(True)
+        attn_dst = (
+            (torch.rand(out_dim) * 2 - 1) * limit_a
+        ).requires_grad_(True)
+
+        head_dict = {
+            'weight': w,
+            'attn_src': attn_src,
+            'attn_dst': attn_dst,
+        }
+
+        if with_bias:
+            head_dict['bias'] = torch.zeros(out_dim, requires_grad=True)
+
+        heads.append(head_dict)
+
+    return heads
 
 # Step 25 - gat_stack_forward (not yet solved)
 # TODO: implement
