@@ -1061,6 +1061,204 @@ def oversmoothing_diagnostic(layer_features):
         mean = sum(scores)/len(scores)
     return {"pairwise_similarities": scores, "mean_similarity":mean}
 
-# Step 46 - mpnn_gnn_experiment (not yet solved)
-# TODO: implement
+# Step 46 - mpnn_gnn_experiment
+import torch
+
+
+def mpnn_gnn_experiment(
+    num_nodes=40,
+    num_features=8,
+    num_classes=2,
+    num_layers=3,
+    hidden_dim=16,
+    num_epochs=20,
+    lr=0.01,
+    seed=0,
+):
+    """Run an end-to-end GCN-vs-GAT node-classification comparison on one synthetic SBM graph."""
+    # 1. Generate SBM graph dataset
+    graphs = build_node_classification_dataset(
+        1, num_nodes, num_classes, 0.5, 0.1, num_features, seed=seed
+    )
+    graph = graphs[0]
+
+    x = graph["node_features"]
+    edge_index = graph["edge_index"]
+    y = graph["node_labels"]
+    src, dst = edge_index[0], edge_index[1]
+    E = edge_index.shape[1]
+
+    # 2. Build seeded boolean train_mask with exactly num_nodes // 2 True entries
+    if seed is not None:
+        torch.manual_seed(seed)
+    perm = torch.randperm(num_nodes)
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    train_mask[perm[: num_nodes // 2]] = True
+
+    dataset = {
+        "x": x,
+        "edge_index": edge_index,
+        "y": y,
+        "train_mask": train_mask,
+    }
+
+    activations = [torch.relu] * num_layers
+
+    # --- Setup GCN ---
+    gcn_params = {}
+    for i in range(num_layers):
+        in_d = num_features if i == 0 else hidden_dim
+        out_d = hidden_dim
+        p = init_gcn_parameters(
+            in_d,
+            out_d,
+            with_bias=True,
+            seed=(seed + 10 + i) if seed is not None else None,
+        )
+        gcn_params[f"l{i}_weight"] = p["weight"].requires_grad_(True)
+        if "bias" in p:
+            gcn_params[f"l{i}_bias"] = p["bias"].requires_grad_(True)
+
+    head_p = init_gcn_parameters(
+        hidden_dim,
+        num_classes,
+        with_bias=True,
+        seed=(seed + 50) if seed is not None else None,
+    )
+    gcn_params["head_weight"] = head_p["weight"].requires_grad_(True)
+    if "bias" in head_p:
+        gcn_params["head_bias"] = head_p["bias"].requires_grad_(True)
+
+    def gcn_forward(params, x_in, edge_idx):
+        s, d = edge_idx[0], edge_idx[1]
+        param_list = []
+        for i in range(num_layers):
+            layer_dict = {"weight": params[f"l{i}_weight"]}
+            if f"l{i}_bias" in params:
+                layer_dict["bias"] = params[f"l{i}_bias"]
+            param_list.append(layer_dict)
+
+        emb, _ = gcn_stack_forward(
+            x_in, s, d, param_list, activations=activations
+        )
+        h_bias = params.get("head_bias", None)
+        return node_classification_head(emb, params["head_weight"], h_bias)
+
+    # Train GCN
+    gcn_train_result = train_node_classifier(
+        gcn_params, dataset, gcn_forward, num_epochs=num_epochs, lr=lr
+    )
+    gcn_trained_params = gcn_train_result["params"]
+    gcn_history = gcn_train_result["history"]
+
+    # Compute GCN oversmoothing diagnostic
+    with torch.no_grad():
+        trained_gcn_param_list = []
+        for i in range(num_layers):
+            layer_dict = {"weight": gcn_trained_params[f"l{i}_weight"]}
+            if f"l{i}_bias" in gcn_trained_params:
+                layer_dict["bias"] = gcn_trained_params[f"l{i}_bias"]
+            trained_gcn_param_list.append(layer_dict)
+        _, gcn_all_layers = gcn_stack_forward(
+            x, src, dst, trained_gcn_param_list, activations=activations
+        )
+        gcn_oversmoothing = oversmoothing_diagnostic(gcn_all_layers)
+
+    # --- Setup GAT ---
+    gat_params = {}
+    for i in range(num_layers):
+        in_d = num_features if i == 0 else hidden_dim
+        out_d = hidden_dim
+        p_heads = init_gat_parameters(
+            in_d,
+            out_d,
+            num_heads=1,
+            with_bias=True,
+            seed=(seed + 100 + i) if seed is not None else None,
+        )
+        h0 = p_heads[0]
+        gat_params[f"l{i}_h0_weight"] = h0["weight"]
+        gat_params[f"l{i}_h0_attn_src"] = h0["attn_src"]
+        gat_params[f"l{i}_h0_attn_dst"] = h0["attn_dst"]
+        if "bias" in h0:
+            gat_params[f"l{i}_h0_bias"] = h0["bias"]
+
+    gat_head_p = init_gcn_parameters(
+        hidden_dim,
+        num_classes,
+        with_bias=True,
+        seed=(seed + 150) if seed is not None else None,
+    )
+    gat_params["head_weight"] = gat_head_p["weight"].requires_grad_(True)
+    if "bias" in gat_head_p:
+        gat_params["head_bias"] = gat_head_p["bias"].requires_grad_(True)
+
+    def gat_forward(params, x_in, edge_idx):
+        s, d = edge_idx[0], edge_idx[1]
+        layer_param_list = []
+        for i in range(num_layers):
+            h0_dict = {
+                "weight": params[f"l{i}_h0_weight"],
+                "attn_src": params[f"l{i}_h0_attn_src"],
+                "attn_dst": params[f"l{i}_h0_attn_dst"],
+            }
+            if f"l{i}_h0_bias" in params:
+                h0_dict["bias"] = params[f"l{i}_h0_bias"]
+            layer_param_list.append([h0_dict])
+
+        emb, _ = gat_stack_forward(
+            x_in,
+            s,
+            d,
+            layer_param_list,
+            merge_modes=["concat"] * num_layers,
+            activations=activations,
+        )
+        h_bias = params.get("head_bias", None)
+        return node_classification_head(emb, params["head_weight"], h_bias)
+
+    # Train GAT
+    gat_train_result = train_node_classifier(
+        gat_params, dataset, gat_forward, num_epochs=num_epochs, lr=lr
+    )
+    gat_trained_params = gat_train_result["params"]
+    gat_history = gat_train_result["history"]
+
+    # Compute GAT oversmoothing diagnostic
+    with torch.no_grad():
+        trained_gat_layer_param_list = []
+        for i in range(num_layers):
+            h0_dict = {
+                "weight": gat_trained_params[f"l{i}_h0_weight"],
+                "attn_src": gat_trained_params[f"l{i}_h0_attn_src"],
+                "attn_dst": gat_trained_params[f"l{i}_h0_attn_dst"],
+            }
+            if f"l{i}_h0_bias" in gat_trained_params:
+                h0_dict["bias"] = gat_trained_params[f"l{i}_h0_bias"]
+            trained_gat_layer_param_list.append([h0_dict])
+        _, gat_all_layers = gat_stack_forward(
+            x,
+            src,
+            dst,
+            trained_gat_layer_param_list,
+            merge_modes=["concat"] * num_layers,
+            activations=activations,
+        )
+        gat_oversmoothing = oversmoothing_diagnostic(gat_all_layers)
+
+    return {
+        "gcn": {
+            "history": gcn_history,
+            "oversmoothing": gcn_oversmoothing,
+        },
+        "gat": {
+            "history": gat_history,
+            "oversmoothing": gat_oversmoothing,
+        },
+        "dataset_sizes": {
+            "N": int(num_nodes),
+            "E": int(E),
+            "C": int(num_classes),
+        },
+    }
 
