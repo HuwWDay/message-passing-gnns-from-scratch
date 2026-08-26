@@ -709,8 +709,13 @@ def global_mean_max_pool(node_features, batch_index, num_graphs=None):
     maxi = global_max_pool(node_features, batch_index, num_graphs)
     return torch.cat([mean, maxi], dim=-1)
 
-# Step 30 - node_classification_head (not yet solved)
-# TODO: implement
+# Step 30 - node_classification_head
+def node_classification_head(node_embeddings, weight, bias=None):
+    # TODO: Map node embeddings to per-node class logits via a linear head...
+    out = node_embeddings @ weight 
+    if bias is not None:
+        out += bias 
+    return out
 
 # Step 31 - graph_regression_head (not yet solved)
 # TODO: implement
