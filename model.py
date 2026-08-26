@@ -1039,8 +1039,14 @@ def train_graph_regressor(
 
     return history, params
 
-# Step 44 - representation_similarity (not yet solved)
-# TODO: implement
+# Step 44 - representation_similarity
+def representation_similarity(features_a, features_b):
+    # TODO: Return mean cosine similarity of corresponding rows (eps=1e-8)...
+    L2_a = features_a.norm(dim=1, keepdim=True)
+    L2_b = features_b.norm(dim=1, keepdim=True)
+    A = features_a / (L2_a + 1e-8)
+    B = features_b / (L2_b + 1e-8)
+    return (A*B).sum(dim=1).mean().item()
 
 # Step 45 - oversmoothing_diagnostic (not yet solved)
 # TODO: implement
